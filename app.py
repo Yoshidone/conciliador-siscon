@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import itertools
 
 st.set_page_config(page_title="Conciliador Anual SISCONT", layout="wide")
 
@@ -8,7 +7,7 @@ st.set_page_config(page_title="Conciliador Anual SISCONT", layout="wide")
 # TITULO
 # =============================
 st.title("📊 Conciliador Anual SISCONT")
-st.markdown("Análisis + conciliación automática + evidencia real")
+st.markdown("Análisis + conciliación automática + evidencia de compensaciones")
 
 # =============================
 # SUBIR ARCHIVO
@@ -46,7 +45,7 @@ if file:
     df_year = df[df[col_fecha].dt.year == año_seleccionado]
 
     # =============================
-    # RESUMEN ORIGINAL (NO TOCADO)
+    # RESUMEN CONTABLE
     # =============================
     resumen = df_year.groupby(col_cliente).agg(
         Total_Neto=(col_neto, "sum"),
@@ -58,7 +57,7 @@ if file:
     resumen["Diferencia"] = resumen["Total_Debito"] - resumen["Total_Credito"]
 
     # =============================
-    # DASHBOARD ORIGINAL
+    # DASHBOARD
     # =============================
     st.markdown("## 📊 Dashboard Anual")
 
@@ -69,7 +68,7 @@ if file:
     col4.metric("Clientes con diferencia", resumen[resumen["Diferencia"] != 0].shape[0])
 
     # =============================
-    # TABLA ORIGINAL
+    # TABLA
     # =============================
     st.markdown("## 📋 Detalle por Cliente")
 
@@ -82,17 +81,15 @@ if file:
     )
 
     # =============================
-    # MATCHING 1 vs 1
+    # MATCHING INTERNO (CON EVIDENCIA)
     # =============================
-    st.markdown("## 🔍 Conciliación automática (1 vs 1)")
+    st.markdown("## 🔍 Conciliación automática con evidencia")
 
     df_match = df_year[[col_cliente, col_neto, col_fecha]].dropna().copy()
     df_match["usado"] = False
 
     matches = []
     no_match = []
-
-    tolerancia = 1
 
     for i, row1 in df_match.iterrows():
         if df_match.loc[i, "usado"]:
@@ -104,16 +101,19 @@ if file:
             if i == j or df_match.loc[j, "usado"]:
                 continue
 
-            if abs(row1[col_neto] + row2[col_neto]) <= tolerancia:
+            # condición de compensación
+            if abs(row1[col_neto] + row2[col_neto]) < 1:
 
                 matches.append({
-                    "Cliente 1": row1[col_cliente],
-                    "Monto 1": row1[col_neto],
-                    "Fecha 1": row1[col_fecha],
+                    "Cliente Origen": row1[col_cliente],
+                    "Monto Origen": row1[col_neto],
+                    "Fecha Origen": row1[col_fecha],
 
-                    "Cliente 2": row2[col_cliente],
-                    "Monto 2": row2[col_neto],
-                    "Fecha 2": row2[col_fecha],
+                    "Cliente Compensa": row2[col_cliente],
+                    "Monto Compensa": row2[col_neto],
+                    "Fecha Compensa": row2[col_fecha],
+
+                    "Comentario": "Compensación detectada automáticamente"
                 })
 
                 df_match.loc[i, "usado"] = True
@@ -125,62 +125,26 @@ if file:
             no_match.append({
                 "Cliente": row1[col_cliente],
                 "Monto": row1[col_neto],
-                "Fecha": row1[col_fecha]
+                "Fecha": row1[col_fecha],
+                "Estado": "Sin compensación"
             })
 
     df_matches = pd.DataFrame(matches)
     df_no_match = pd.DataFrame(no_match)
 
+    # =============================
+    # MOSTRAR MATCHES (EVIDENCIA)
+    # =============================
+    st.markdown("### ✅ Evidencia de compensaciones")
+
     st.dataframe(df_matches, use_container_width=True)
 
     # =============================
-    # MATCHING AVANZADO (2 vs 1)
+    # DIFERENCIAS REALES
     # =============================
-    st.markdown("## 🧠 Conciliación avanzada (2 vs 1)")
+    st.markdown("### ❗ Diferencias reales")
 
-    group_matches = []
-
-    for comb in itertools.combinations(range(len(df_no_match)), 3):
-
-        i, j, k = comb
-
-        a = df_no_match.iloc[i]
-        b = df_no_match.iloc[j]
-        c = df_no_match.iloc[k]
-
-        if abs(a["Monto"] + b["Monto"] + c["Monto"]) <= tolerancia:
-
-            group_matches.append({
-                "Cliente 1": a["Cliente"],
-                "Monto 1": a["Monto"],
-
-                "Cliente 2": b["Cliente"],
-                "Monto 2": b["Monto"],
-
-                "Cliente 3": c["Cliente"],
-                "Monto 3": c["Monto"],
-            })
-
-    df_group = pd.DataFrame(group_matches)
-
-    st.dataframe(df_group, use_container_width=True)
-
-    # =============================
-    # DIFERENCIA REAL FINAL
-    # =============================
-    usados_grupo = set()
-
-    for match in group_matches:
-        usados_grupo.update([
-            match["Monto 1"],
-            match["Monto 2"],
-            match["Monto 3"]
-        ])
-
-    df_final = df_no_match[~df_no_match["Monto"].isin(usados_grupo)]
-
-    st.markdown("## ❗ Diferencias reales finales")
-    st.dataframe(df_final, use_container_width=True)
+    st.dataframe(df_no_match, use_container_width=True)
 
     # =============================
     # DASHBOARD FINAL REAL
@@ -188,15 +152,116 @@ if file:
     st.markdown("## 📊 Dashboard Final REAL")
 
     total = len(df_match)
-    conciliados = len(df_matches) + len(df_group)
-    pendientes = len(df_final)
-    monto_real = df_final["Monto"].sum() if not df_final.empty else 0
+    conciliados = len(df_matches)
+    pendientes = len(df_no_match)
+
+    monto_real = df_no_match["Monto"].sum() if not df_no_match.empty else 0
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total registros", total)
+    col1.metric("Total Registros", total)
     col2.metric("Conciliados", conciliados)
-    col3.metric("Pendientes reales", pendientes)
-    col4.metric("Diferencia real", f"{monto_real:,.2f}")
+    col3.metric("Pendientes", pendientes)
+    col4.metric("Diferencia Real", f"{monto_real:,.2f}")
+
+    # =============================
+    # DESCARGAS
+    # =============================
+    st.download_button(
+        "📥 Descargar evidencia",
+        df_matches.to_csv(index=False).encode("utf-8"),
+        "evidencia_matching.csv",
+        "text/csv"
+    )
+
+    st.download_button(
+        "📥 Descargar diferencias reales",
+        df_no_match.to_csv(index=False).encode("utf-8"),
+        "diferencias_reales.csv",
+        "text/csv"
+    )
 
 else:
-    st.info("Sube un archivo para comenzar")
+    st.info("Sube un archivo para comenzar")# =============================
+# 🔍 MATCHING INTERNO (SIN CAMBIAR TU LÓGICA)
+# =============================
+st.markdown("## 🔍 Conciliación interna por monto (evidencia)")
+
+df_match = df_year[[col_cliente, col_neto, col_fecha]].dropna().copy()
+df_match["usado"] = False
+
+matches = []
+no_match = []
+
+for i, row1 in df_match.iterrows():
+    if df_match.loc[i, "usado"]:
+        continue
+
+    encontrado = False
+
+    for j, row2 in df_match.iterrows():
+        if i == j or df_match.loc[j, "usado"]:
+            continue
+
+        # si se compensan
+        if abs(row1[col_neto] + row2[col_neto]) < 1:
+
+            matches.append({
+                "Cliente 1": row1[col_cliente],
+                "Monto 1": row1[col_neto],
+                "Fecha 1": row1[col_fecha],
+
+                "Cliente 2": row2[col_cliente],
+                "Monto 2": row2[col_neto],
+                "Fecha 2": row2[col_fecha],
+
+                "Evidencia": "Compensación encontrada"
+            })
+
+            df_match.loc[i, "usado"] = True
+            df_match.loc[j, "usado"] = True
+            encontrado = True
+            break
+
+    if not encontrado:
+        no_match.append({
+            "Cliente": row1[col_cliente],
+            "Monto": row1[col_neto],
+            "Fecha": row1[col_fecha]
+        })
+
+df_matches = pd.DataFrame(matches)
+df_no_match = pd.DataFrame(no_match)
+
+# =============================
+# RESULTADOS
+# =============================
+st.markdown("### ✅ Movimientos que se compensan")
+st.dataframe(df_matches, use_container_width=True)
+
+st.markdown("### ❗ Diferencias reales (sin compensación)")
+st.dataframe(df_no_match, use_container_width=True)
+
+# =============================
+# DASHBOARD FINAL REAL
+# =============================
+st.markdown("## 📊 Dashboard Final (real)")
+
+total = len(df_match)
+conciliados = len(df_matches)
+pendientes = len(df_no_match)
+
+monto_real = df_no_match["Monto"].sum() if not df_no_match.empty else 0
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Total registros", total)
+col2.metric("Conciliados", conciliados)
+col3.metric("Pendientes", pendientes)
+col4.metric("Diferencia real", f"{monto_real:,.2f}")
+
+# =============================
+# MENSAJE CLAVE
+# =============================
+if monto_real != 0:
+    st.warning("⚠️ Esta es la diferencia REAL que no tiene compensación en el archivo")
+else:
+    st.success("✅ Todo está conciliado correctamente")
