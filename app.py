@@ -8,7 +8,6 @@ st.set_page_config(page_title="Conciliador Anual SISCONT", layout="wide")
 # TITULO
 # =============================
 st.title("📊 Conciliador Anual SISCONT - Modo Auditor")
-st.markdown("Detecta diferencias reales, compensaciones y errores contables automáticamente")
 
 # =============================
 # SUBIR ARCHIVO
@@ -29,8 +28,6 @@ if file:
     col_cliente = "Razón Social"
     col_neto = "NETO"
     col_fecha = "Fecha"
-    col_debito = "Débito"
-    col_credito = "Crédito"
 
     df[col_fecha] = pd.to_datetime(df[col_fecha], errors="coerce")
 
@@ -44,45 +41,27 @@ if file:
     df_year = df[df[col_fecha].dt.year == año_seleccionado]
 
     # =============================
-    # AGRUPACIÓN (🔥 USANDO NETO)
+    # AGRUPACIÓN
     # =============================
     resumen = df_year.groupby(col_cliente).agg(
         Total_Neto=(col_neto, "sum"),
         Cantidad=(col_neto, "count")
     ).reset_index()
 
-    # 🔥 DIFERENCIA REAL
     resumen["Diferencia"] = resumen["Total_Neto"]
 
     # =============================
     # DASHBOARD
     # =============================
-    total_clientes = resumen.shape[0]
-    total_neto = resumen["Total_Neto"].sum()
-    clientes_con_diferencia = resumen[abs(resumen["Diferencia"]) > 1].shape[0]
-
-    st.markdown("## 📊 Dashboard Auditor")
+    st.markdown("## 📊 Dashboard")
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("Clientes", total_clientes)
-    col2.metric("Total Neto", f"{total_neto:,.2f}")
-    col3.metric("Clientes con diferencia real", clientes_con_diferencia)
+    col1.metric("Clientes", resumen.shape[0])
+    col2.metric("Total Neto", f"{resumen['Total_Neto'].sum():,.2f}")
+    col3.metric("Clientes con diferencia", resumen[abs(resumen["Diferencia"]) > 1].shape[0])
 
     # =============================
-    # SEMÁFORO
-    # =============================
-    def estado(x):
-        if abs(x) < 1:
-            return "🟢 Cuadrado"
-        elif abs(x) < 100:
-            return "🟡 Diferencia menor"
-        else:
-            return "🔴 Revisar"
-
-    resumen["Estado"] = resumen["Diferencia"].apply(estado)
-
-    # =============================
-    # TABLA PRINCIPAL
+    # TABLA
     # =============================
     st.markdown("## 📋 Detalle por Cliente")
 
@@ -97,7 +76,7 @@ if file:
     # =============================
     # 🔍 MATCHING INTELIGENTE
     # =============================
-    st.markdown("## 🔍 Compensaciones detectadas (tipo auditor)")
+    st.markdown("## 🔍 Compensaciones detectadas")
 
     df_match = df_year[[col_cliente, col_neto, col_fecha]].dropna().copy()
     df_match["usado"] = False
@@ -105,7 +84,7 @@ if file:
     valores = df_match.reset_index()
     matches = []
 
-    # 1 vs 1
+    # -------- 1 vs 1 --------
     for i, row1 in valores.iterrows():
         if valores.loc[i, "usado"]:
             continue
@@ -125,12 +104,15 @@ if file:
                 valores.loc[j, "usado"] = True
                 break
 
-    # combinaciones
+    # -------- combinaciones --------
     no_usados = valores[valores["usado"] == False]
 
     for i, row_neg in no_usados.iterrows():
 
-        if valores.loc[i, "usado"] or row_neg[col_neto] >= 0:
+        if valores.loc[i, "usado"]:
+            continue
+
+        if row_neg[col_neto] >= 0:
             continue
 
         positivos = valores[
@@ -139,6 +121,7 @@ if file:
         ]
 
         lista_valores = list(positivos.index)
+        encontrado = False
 
         for r in range(2, 4):
             for combo in combinations(lista_valores, r):
@@ -160,7 +143,11 @@ if file:
                         valores.loc[k, "usado"] = True
 
                     valores.loc[i, "usado"] = True
+                    encontrado = True
                     break
+
+            if encontrado:
+                break
 
     df_matches = pd.DataFrame(matches)
 
@@ -186,10 +173,10 @@ if file:
 
         monto_no_cuadra = df_no_cuadra[col_neto].sum()
 
-        st.error(f"🚨 Diferencia real sin compensar: {monto_no_cuadra:,.2f}")
+        st.error(f"🚨 Diferencia sin compensar: {monto_no_cuadra:,.2f}")
 
     else:
-        st.success("🎯 Todo está perfectamente conciliado")
+        st.success("🎯 Todo cuadra perfectamente")
 
     # =============================
     # DESCARGA
@@ -197,14 +184,11 @@ if file:
     csv = resumen.to_csv(index=False).encode("utf-8")
 
     st.download_button(
-        "📥 Descargar análisis",
+        "📥 Descargar resumen",
         csv,
-        "analisis_auditor.csv",
+        "resumen.csv",
         "text/csv"
     )
-
-else:
-    st.info("Sube un archivo para comenzar")
 
 else:
     st.info("Sube un archivo para comenzar")
