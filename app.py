@@ -89,7 +89,7 @@ if file:
     )
 
     # =============================
-    # AJUSTE 2024 → 2025
+    # AJUSTE AÑO ANTERIOR
     # =============================
     st.markdown("## 🔄 Ajuste por arrastre (año anterior)")
 
@@ -108,8 +108,6 @@ if file:
         resumen_ajustado["Diferencia_Ajustada"] = (
             resumen_ajustado["Diferencia"] + resumen_ajustado["Ajuste_Anterior"]
         )
-
-        st.info("Incluye movimientos de diciembre del año anterior")
 
         st.dataframe(
             resumen_ajustado.style.applymap(
@@ -132,6 +130,35 @@ if file:
         col1, col2 = st.columns(2)
         col1.metric("Total Diferencia Ajustada", f"{total_dif_ajustada:,.2f}")
         col2.metric("Clientes con diferencia ajustada", clientes_ajustados)
+
+        # =============================
+        # SEMÁFORO + EXPLICACIÓN
+        # =============================
+        st.markdown("## 🧾 Análisis Inteligente (tipo auditor)")
+
+        def clasificar(row):
+            if abs(row["Diferencia_Ajustada"]) < 1:
+                return "🟢 OK", "Diferencia compensada por arrastre del año anterior"
+            elif row["Ajuste_Anterior"] != 0:
+                return "🟡 Ajustado", "Diferencia parcialmente compensada, revisar detalle"
+            else:
+                return "🔴 Error", "Diferencia real pendiente de revisión"
+
+        resumen_ajustado[["Estado", "Comentario"]] = resumen_ajustado.apply(
+            lambda row: pd.Series(clasificar(row)), axis=1
+        )
+
+        st.dataframe(
+            resumen_ajustado[[
+                "Razón Social",
+                "Diferencia",
+                "Ajuste_Anterior",
+                "Diferencia_Ajustada",
+                "Estado",
+                "Comentario"
+            ]],
+            use_container_width=True
+        )
 
     else:
         st.warning("No hay datos de diciembre del año anterior")
