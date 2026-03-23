@@ -176,18 +176,43 @@ if file:
     )
 
     # =============================
-    # MATCHING INTERNO (FIX)
+    # 🔍 MATCHING INTERNO (AGREGADO SIN CAMBIAR TU LÓGICA)
     # =============================
     st.markdown("## 🔍 Detección de montos que cuadran (aunque sean distintos clientes)")
 
-    df_match = df_year.copy()
-    df_match = df_match[[col_cliente, col_neto, col_fecha]].dropna()
+    df_match = df_year[[col_cliente, col_neto, col_fecha]].dropna()
 
-    # 🔥 ESTA ES LA LÍNEA QUE FALTABA
+    # 🔥 FIX IMPORTANTE
     df_match["usado"] = False
+
+    matches = []
+
+    for i, row1 in df_match.iterrows():
+        if df_match.loc[i, "usado"]:
+            continue
+
+        for j, row2 in df_match.iterrows():
+            if i == j or df_match.loc[j, "usado"]:
+                continue
+
+            if abs(row1[col_neto] + row2[col_neto]) < 1:
+
+                matches.append({
+                    "Cliente 1": row1[col_cliente],
+                    "Monto 1": row1[col_neto],
+                    "Cliente 2": row2[col_cliente],
+                    "Monto 2": row2[col_neto],
+                    "Fecha 1": row1[col_fecha],
+                    "Fecha 2": row2[col_fecha],
+                })
+
+                df_match.loc[i, "usado"] = True
+                df_match.loc[j, "usado"] = True
+                break
+
+    df_matches = pd.DataFrame(matches)
+
+    st.dataframe(df_matches, use_container_width=True)
 
 else:
     st.info("Sube un archivo para comenzar")
-df_match = df_match[[col_cliente, col_neto, col_fecha]].dropna()
-
-df_match["usado"] = False
