@@ -216,3 +216,25 @@ if file:
 
 else:
     st.info("Sube un archivo para comenzar")
+    
+# =============================
+# ❗ LO QUE NO CUADRA
+# =============================
+st.markdown("## ❗ Movimientos que NO cuadran")
+
+# lo que no fue usado en matching
+df_no_cuadra = df_match[df_match["usado"] == False]
+
+if not df_no_cuadra.empty:
+
+    st.dataframe(
+        df_no_cuadra[[col_cliente, col_neto, col_fecha]],
+        use_container_width=True
+    )
+
+    monto_no_cuadra = df_no_cuadra[col_neto].sum()
+
+    st.warning(f"⚠️ Diferencia total sin cuadrar: {monto_no_cuadra:,.2f}")
+
+else:
+    st.success("✅ Todo cuadra perfectamente (no hay diferencias)")
