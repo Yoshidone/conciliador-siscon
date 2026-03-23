@@ -1,136 +1,115 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Conciliador Financiero Inteligente", layout="wide")
+st.set_page_config(page_title="Conciliador Anual SISCONT", layout="wide")
 
 # =============================
 # TITULO
 # =============================
-st.title("📊 Conciliador Financiero Inteligente")
-st.markdown("Detecta diferencias y encuentra coincidencias aunque no sean exactas")
+st.title("📊 Conciliador Anual SISCONT")
+st.markdown("Analiza el acumulado anual y detecta diferencias por Razón Social")
 
 # =============================
-# SUBIR ARCHIVOS
+# SUBIR ARCHIVO
 # =============================
-st.subheader("📂 Subir archivos")
+st.subheader("📂 Subir archivo SISCONT")
 
-file1 = st.file_uploader("Archivo 1", type=["xlsx"])
-file2 = st.file_uploader("Archivo 2", type=["xlsx"])
+file = st.file_uploader("Sube tu Excel SISCONT", type=["xlsx"])
 
-if file1 and file2:
+if file:
 
-    df1 = pd.read_excel(file1)
-    df2 = pd.read_excel(file2)
+    df = pd.read_excel(file)
 
-    st.success("Archivos cargados correctamente")
-
-    # =============================
-    # CONFIGURACIÓN
-    # =============================
-    st.subheader("🧠 Matching inteligente")
-
-    tolerancia_monto = st.number_input("Tolerancia de monto", value=0.5)
-    tolerancia_dias = st.number_input("Tolerancia de días", value=4)
+    st.success("Archivo cargado correctamente")
 
     # =============================
     # LIMPIEZA
     # =============================
-    df1.columns = df1.columns.str.strip()
-    df2.columns = df2.columns.str.strip()
+    df.columns = df.columns.str.strip()
 
-    # Ajusta estos nombres según tu archivo
+    # Ajusta nombres según tu archivo
     col_cliente = "Razón Social"
-    col_monto = "NETO"
+    col_neto = "NETO"
     col_fecha = "Fecha"
 
-    df1[col_fecha] = pd.to_datetime(df1[col_fecha], errors="coerce")
-    df2[col_fecha] = pd.to_datetime(df2[col_fecha], errors="coerce")
-
-    df2["usado"] = False
-
-    matches = []
+    # Convertir fecha
+    df[col_fecha] = pd.to_datetime(df[col_fecha], errors="coerce")
 
     # =============================
-    # MATCHING 1 A 1
+    # FILTRO AÑO (opcional)
     # =============================
-    for i, row1 in df1.iterrows():
-        for j, row2 in df2.iterrows():
+    st.subheader("📅 Filtrar por año")
 
-            if df2.loc[j, "usado"]:
-                continue
+    años = df[col_fecha].dt.year.dropna().unique()
+    año_seleccionado = st.selectbox("Selecciona año", sorted(años))
 
-            # filtro por cliente
-            if str(row1[col_cliente]).strip().lower() != str(row2[col_cliente]).strip().lower():
-                continue
+    df = df[df[col_fecha].dt.year == año_seleccionado]
 
-            # diferencia monto
-            diff_monto = abs(row1[col_monto] - row2[col_monto])
+    # =============================
+    # AGRUPACIÓN
+    # =============================
+    resumen = df.groupby(col_cliente).agg(
+        Total_Neto=("NETO", "sum"),
+        Total_Debito=("Débito", "sum"),
+        Total_Credito=("Crédito", "sum"),
+        Cantidad=("NETO", "count")
+    ).reset_index()
 
-            # diferencia fechas
-            diff_fecha = abs((row1[col_fecha] - row2[col_fecha]).days)
-
-            if diff_monto <= tolerancia_monto and diff_fecha <= tolerancia_dias:
-
-                score = 100 - (diff_monto * 10 + diff_fecha * 2)
-
-                matches.append({
-                    "Monto 1": row1[col_monto],
-                    "Monto 2": row2[col_monto],
-                    "Cliente": row1[col_cliente],
-                    "Fecha 1": row1[col_fecha],
-                    "Fecha 2": row2[col_fecha],
-                    "Diferencia": row1[col_monto] - row2[col_monto],
-                    "Score (%)": max(score, 0)
-                })
-
-                df2.loc[j, "usado"] = True
-                break
-
-    df_resultado = pd.DataFrame(matches)
+    # =============================
+    # DIFERENCIA
+    # =============================
+    resumen["Diferencia"] = resumen["Total_Debito"] - resumen["Total_Credito"]
 
     # =============================
     # DASHBOARD
     # =============================
-    if not df_resultado.empty:
+    total_clientes = resumen.shape[0]
+    total_neto = resumen["Total_Neto"].sum()
+    total_diferencia = resumen["Diferencia"].sum()
+    clientes_con_diferencia = resumen[resumen["Diferencia"] != 0].shape[0]
 
-        total_registros = len(df_resultado)
-        total_diferencias = len(df_resultado[df_resultado["Diferencia"] != 0])
-        monto_total_diferencia = df_resultado["Diferencia"].sum()
-        porcentaje_diferencia = (total_diferencias / total_registros) * 100
+    st.markdown("## 📊 Dashboard Anual")
 
-        st.markdown("## 📊 Dashboard de Diferencias")
+    col1, col2, col3, col4 = st.columns(4)
 
-        col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Clientes", total_clientes)
+    col2.metric("Total Neto", f"{total_neto:,.2f}")
+    col3.metric("Total Diferencias", f"{total_diferencia:,.2f}")
+    col4.metric("Clientes con diferencia", clientes_con_diferencia)
 
-        col1.metric("Total Matching", total_registros)
-        col2.metric("Con Diferencias", total_diferencias)
-        col3.metric("Monto Total Dif", f"{monto_total_diferencia:,.2f}")
-        col4.metric("% Diferencias", f"{porcentaje_diferencia:.2f}%")
+    # =============================
+    # TABLA
+    # =============================
+    st.markdown("## 📋 Detalle por Cliente")
 
-        st.warning("⚠️ Posibles coincidencias encontradas")
+    st.dataframe(
+        resumen.style.applymap(
+            lambda x: "background-color: red" if x != 0 else "",
+            subset=["Diferencia"]
+        ),
+        use_container_width=True
+    )
 
-        # =============================
-        # TABLA
-        # =============================
-        st.dataframe(
-            df_resultado.style.applymap(
-                lambda x: "background-color: red" if x != 0 else "",
-                subset=["Diferencia"]
-            ),
-            use_container_width=True
-        )
+    # =============================
+    # SOLO DIFERENCIAS
+    # =============================
+    st.markdown("## ⚠️ Clientes con diferencias")
 
-        # =============================
-        # DESCARGA
-        # =============================
-        csv = df_resultado.to_csv(index=False).encode("utf-8")
+    df_diff = resumen[resumen["Diferencia"] != 0]
 
-        st.download_button(
-            "📥 Descargar matching",
-            csv,
-            "matching_resultado.csv",
-            "text/csv"
-        )
+    st.dataframe(df_diff, use_container_width=True)
 
-    else:
-        st.error("No se encontraron coincidencias")
+    # =============================
+    # DESCARGA
+    # =============================
+    csv = resumen.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        "📥 Descargar resumen anual",
+        csv,
+        "resumen_siscont.csv",
+        "text/csv"
+    )
+
+else:
+    st.info("Sube un archivo para comenzar")
