@@ -134,16 +134,11 @@ if file:
     st.dataframe(df_no_match, use_container_width=True)
 
     # =============================
-    # 🔥 VALIDACIÓN CON ARRASTRE (CLAVE)
+    # 🔥 NUEVO: VALIDACIÓN VS EXCEL
     # =============================
-    st.markdown("## 🧠 Validación contra acumulado (tipo Excel + arrastre)")
+    st.markdown("## 🧠 Validación contra acumulado (tipo Excel)")
 
-    # incluir año actual + año anterior
-    df_validacion = df[
-        df[col_fecha].dt.year.isin([año_seleccionado, año_seleccionado - 1])
-    ]
-
-    df_grouped = df_validacion.groupby(col_cliente)[col_neto].sum().reset_index()
+    df_grouped = df_year.groupby(col_cliente)[col_neto].sum().reset_index()
     df_grouped = df_grouped[df_grouped[col_neto].round(2) != 0]
 
     evidencia = []
@@ -152,8 +147,8 @@ if file:
         cliente = row[col_cliente]
         monto = row[col_neto]
 
-        posibles = df_validacion[
-            abs(df_validacion[col_neto] + monto) < 1
+        posibles = df_year[
+            abs(df_year[col_neto] + monto) < 1
         ]
 
         if not posibles.empty:
@@ -163,8 +158,7 @@ if file:
                     "Monto Residual": monto,
                     "Se compensa con": p[col_cliente],
                     "Monto encontrado": p[col_neto],
-                    "Fecha": p[col_fecha],
-                    "Origen": "Arrastre o movimiento cruzado"
+                    "Fecha": p[col_fecha]
                 })
         else:
             evidencia.append({
@@ -172,8 +166,7 @@ if file:
                 "Monto Residual": monto,
                 "Se compensa con": "NO ENCONTRADO",
                 "Monto encontrado": "",
-                "Fecha": "",
-                "Origen": "Diferencia real"
+                "Fecha": ""
             })
 
     df_evidencia = pd.DataFrame(evidencia)
