@@ -175,21 +175,19 @@ if file:
         "text/csv"
     )
 
+    # =============================
+    # MATCHING INTERNO (FIX)
+    # =============================
+    st.markdown("## 🔍 Detección de montos que cuadran (aunque sean distintos clientes)")
+
+    df_match = df_year.copy()
+    df_match = df_match[[col_cliente, col_neto, col_fecha]].dropna()
+
+    # 🔥 ESTA ES LA LÍNEA QUE FALTABA
+    df_match["usado"] = False
+
 else:
     st.info("Sube un archivo para comenzar")
-    
-# =============================
-# MATCHING INTERNO POR MONTO
-# =============================
-st.markdown("## 🔍 Detección de montos que cuadran (aunque sean distintos clientes)")
-
-df_match = df_year.copy()
-
-# nos quedamos con lo necesario
-df_match = df_match[[col_cliente, col_neto, col_fecha]].dropna()
-
-df_match = df_year.copy()
-
 df_match = df_match[[col_cliente, col_neto, col_fecha]].dropna()
 
 df_match["usado"] = False
