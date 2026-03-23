@@ -81,7 +81,7 @@ if file:
     )
 
     # =============================
-    # MATCHING INTERNO (CON EVIDENCIA)
+    # MATCHING DETALLE (TU LÓGICA)
     # =============================
     st.markdown("## 🔍 Conciliación automática con evidencia")
 
@@ -101,7 +101,6 @@ if file:
             if i == j or df_match.loc[j, "usado"]:
                 continue
 
-            # condición de compensación
             if abs(row1[col_neto] + row2[col_neto]) < 1:
 
                 matches.append({
@@ -112,8 +111,6 @@ if file:
                     "Cliente Compensa": row2[col_cliente],
                     "Monto Compensa": row2[col_neto],
                     "Fecha Compensa": row2[col_fecha],
-
-                    "Comentario": "Compensación detectada automáticamente"
                 })
 
                 df_match.loc[i, "usado"] = True
@@ -126,59 +123,66 @@ if file:
                 "Cliente": row1[col_cliente],
                 "Monto": row1[col_neto],
                 "Fecha": row1[col_fecha],
-                "Estado": "Sin compensación"
             })
 
     df_matches = pd.DataFrame(matches)
     df_no_match = pd.DataFrame(no_match)
 
-    # =============================
-    # MOSTRAR MATCHES (EVIDENCIA)
-    # =============================
-    st.markdown("### ✅ Evidencia de compensaciones")
-
     st.dataframe(df_matches, use_container_width=True)
 
-    # =============================
-    # DIFERENCIAS REALES
-    # =============================
     st.markdown("### ❗ Diferencias reales")
-
     st.dataframe(df_no_match, use_container_width=True)
 
     # =============================
-    # DASHBOARD FINAL REAL
+    # 🔥 NUEVO: VALIDACIÓN VS EXCEL
+    # =============================
+    st.markdown("## 🧠 Validación contra acumulado (tipo Excel)")
+
+    df_grouped = df_year.groupby(col_cliente)[col_neto].sum().reset_index()
+    df_grouped = df_grouped[df_grouped[col_neto].round(2) != 0]
+
+    evidencia = []
+
+    for _, row in df_grouped.iterrows():
+        cliente = row[col_cliente]
+        monto = row[col_neto]
+
+        posibles = df_year[
+            abs(df_year[col_neto] + monto) < 1
+        ]
+
+        if not posibles.empty:
+            for _, p in posibles.iterrows():
+                evidencia.append({
+                    "Cliente Residual": cliente,
+                    "Monto Residual": monto,
+                    "Se compensa con": p[col_cliente],
+                    "Monto encontrado": p[col_neto],
+                    "Fecha": p[col_fecha]
+                })
+        else:
+            evidencia.append({
+                "Cliente Residual": cliente,
+                "Monto Residual": monto,
+                "Se compensa con": "NO ENCONTRADO",
+                "Monto encontrado": "",
+                "Fecha": ""
+            })
+
+    df_evidencia = pd.DataFrame(evidencia)
+
+    st.dataframe(df_evidencia, use_container_width=True)
+
+    # =============================
+    # DASHBOARD FINAL
     # =============================
     st.markdown("## 📊 Dashboard Final REAL")
 
-    total = len(df_match)
-    conciliados = len(df_matches)
-    pendientes = len(df_no_match)
+    monto_real = df_grouped[col_neto].sum()
 
-    monto_real = df_no_match["Monto"].sum() if not df_no_match.empty else 0
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Registros", total)
-    col2.metric("Conciliados", conciliados)
-    col3.metric("Pendientes", pendientes)
-    col4.metric("Diferencia Real", f"{monto_real:,.2f}")
-
-    # =============================
-    # DESCARGAS
-    # =============================
-    st.download_button(
-        "📥 Descargar evidencia",
-        df_matches.to_csv(index=False).encode("utf-8"),
-        "evidencia_matching.csv",
-        "text/csv"
-    )
-
-    st.download_button(
-        "📥 Descargar diferencias reales",
-        df_no_match.to_csv(index=False).encode("utf-8"),
-        "diferencias_reales.csv",
-        "text/csv"
-    )
+    col1, col2 = st.columns(2)
+    col1.metric("Diferencia total (tipo Excel)", f"{monto_real:,.2f}")
+    col2.metric("Clientes con residual", len(df_grouped))
 
 else:
     st.info("Sube un archivo para comenzar")
