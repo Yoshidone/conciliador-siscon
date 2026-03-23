@@ -1,146 +1,136 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import io
 
-st.set_page_config(page_title="Conciliador Inteligente PRO", layout="wide")
+st.set_page_config(page_title="Conciliador Financiero Inteligente", layout="wide")
 
-st.title("🧠 Conciliador Inteligente por Razón Social")
-st.write("Detecta diferencias y encuentra coincidencias aunque no sean exactas")
+# =============================
+# TITULO
+# =============================
+st.title("📊 Conciliador Financiero Inteligente")
+st.markdown("Detecta diferencias y encuentra coincidencias aunque no sean exactas")
 
-# -----------------------------
-# SUBIR ARCHIVO
-# -----------------------------
-archivo = st.file_uploader("📂 Sube tu Excel SISCON", type=["xlsx"])
+# =============================
+# SUBIR ARCHIVOS
+# =============================
+st.subheader("📂 Subir archivos")
 
-if archivo:
-    df = pd.read_excel(archivo)
+file1 = st.file_uploader("Archivo 1", type=["xlsx"])
+file2 = st.file_uploader("Archivo 2", type=["xlsx"])
 
-    st.subheader("📊 Vista previa")
-    st.dataframe(df.head())
+if file1 and file2:
 
-    # -----------------------------
-    # LIMPIEZA
-    # -----------------------------
-    df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
-    df["Débito"] = pd.to_numeric(df["Débito"], errors="coerce").fillna(0)
-    df["Crédito"] = pd.to_numeric(df["Crédito"], errors="coerce").fillna(0)
+    df1 = pd.read_excel(file1)
+    df2 = pd.read_excel(file2)
 
-    cliente_col = "Razón Social"
+    st.success("Archivos cargados correctamente")
 
-    # -----------------------------
-    # RESUMEN POR CLIENTE
-    # -----------------------------
-    resumen = df.groupby(cliente_col).agg({
-        "Débito": "sum",
-        "Crédito": "sum"
-    }).reset_index()
-
-    resumen["Neto"] = resumen["Débito"] - resumen["Crédito"]
-
-    st.subheader("📊 Resumen por cliente")
-    st.dataframe(resumen)
-
-    # -----------------------------
-    # DIFERENCIAS
-    # -----------------------------
-    diferencias = resumen[resumen["Neto"].round(2) != 0]
-
-    if not diferencias.empty:
-        st.error("🚨 Clientes con diferencias")
-        st.dataframe(diferencias)
-
-        # EXPORTAR DIFERENCIAS
-        buffer = io.BytesIO()
-        diferencias.to_excel(buffer, index=False)
-        st.download_button(
-            label="📥 Descargar diferencias",
-            data=buffer.getvalue(),
-            file_name="diferencias_clientes.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    else:
-        st.success("✅ Todo cuadra por cliente")
-
-    # -----------------------------
-    # DETALLE POR CLIENTE
-    # -----------------------------
-    st.subheader("🔎 Detalle por cliente")
-
-    cliente_select = st.selectbox("Selecciona cliente", df[cliente_col].dropna().unique())
-
-    df_cliente = df[df[cliente_col] == cliente_select]
-    st.dataframe(df_cliente.sort_values("Fecha"))
-
-    # -----------------------------
-    # MATCHING INTELIGENTE
-    # -----------------------------
+    # =============================
+    # CONFIGURACIÓN
+    # =============================
     st.subheader("🧠 Matching inteligente")
 
-    tolerancia = st.number_input("Tolerancia de monto", value=0.5)
-    dias_tolerancia = st.number_input("Tolerancia de días", value=5)
+    tolerancia_monto = st.number_input("Tolerancia de monto", value=0.5)
+    tolerancia_dias = st.number_input("Tolerancia de días", value=4)
 
-    df["Monto"] = df["Débito"] - df["Crédito"]
+    # =============================
+    # LIMPIEZA
+    # =============================
+    df1.columns = df1.columns.str.strip()
+    df2.columns = df2.columns.str.strip()
 
-    coincidencias = []
+    # Ajusta estos nombres según tu archivo
+    col_cliente = "Razón Social"
+    col_monto = "NETO"
+    col_fecha = "Fecha"
 
-    for i in range(len(df)):
-        for j in range(i+1, len(df)):
-            
-            monto1 = df.iloc[i]["Monto"]
-            monto2 = df.iloc[j]["Monto"]
+    df1[col_fecha] = pd.to_datetime(df1[col_fecha], errors="coerce")
+    df2[col_fecha] = pd.to_datetime(df2[col_fecha], errors="coerce")
 
-            fecha1 = df.iloc[i]["Fecha"]
-            fecha2 = df.iloc[j]["Fecha"]
+    df2["usado"] = False
 
-            cliente1 = df.iloc[i][cliente_col]
-            cliente2 = df.iloc[j][cliente_col]
+    matches = []
 
-            # -----------------------------
-            # CONDICIONES DE MATCHING
-            # -----------------------------
-            mismo_monto = abs(abs(monto1) - abs(monto2)) <= tolerancia
-            signo_opuesto = monto1 * monto2 < 0
+    # =============================
+    # MATCHING 1 A 1
+    # =============================
+    for i, row1 in df1.iterrows():
+        for j, row2 in df2.iterrows():
 
-            fecha_cercana = False
-            if pd.notnull(fecha1) and pd.notnull(fecha2):
-                fecha_cercana = abs((fecha1 - fecha2).days) <= dias_tolerancia
+            if df2.loc[j, "usado"]:
+                continue
 
-            if mismo_monto and signo_opuesto:
-                score = 0
+            # filtro por cliente
+            if str(row1[col_cliente]).strip().lower() != str(row2[col_cliente]).strip().lower():
+                continue
 
-                if mismo_monto:
-                    score += 50
-                if signo_opuesto:
-                    score += 30
-                if fecha_cercana:
-                    score += 20
+            # diferencia monto
+            diff_monto = abs(row1[col_monto] - row2[col_monto])
 
-                coincidencias.append({
-                    "Monto 1": monto1,
-                    "Monto 2": monto2,
-                    "Cliente 1": cliente1,
-                    "Cliente 2": cliente2,
-                    "Fecha 1": fecha1,
-                    "Fecha 2": fecha2,
-                    "Score (%)": score
+            # diferencia fechas
+            diff_fecha = abs((row1[col_fecha] - row2[col_fecha]).days)
+
+            if diff_monto <= tolerancia_monto and diff_fecha <= tolerancia_dias:
+
+                score = 100 - (diff_monto * 10 + diff_fecha * 2)
+
+                matches.append({
+                    "Monto 1": row1[col_monto],
+                    "Monto 2": row2[col_monto],
+                    "Cliente": row1[col_cliente],
+                    "Fecha 1": row1[col_fecha],
+                    "Fecha 2": row2[col_fecha],
+                    "Diferencia": row1[col_monto] - row2[col_monto],
+                    "Score (%)": max(score, 0)
                 })
 
-    if coincidencias:
-        df_match = pd.DataFrame(coincidencias).sort_values(by="Score (%)", ascending=False)
+                df2.loc[j, "usado"] = True
+                break
+
+    df_resultado = pd.DataFrame(matches)
+
+    # =============================
+    # DASHBOARD
+    # =============================
+    if not df_resultado.empty:
+
+        total_registros = len(df_resultado)
+        total_diferencias = len(df_resultado[df_resultado["Diferencia"] != 0])
+        monto_total_diferencia = df_resultado["Diferencia"].sum()
+        porcentaje_diferencia = (total_diferencias / total_registros) * 100
+
+        st.markdown("## 📊 Dashboard de Diferencias")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        col1.metric("Total Matching", total_registros)
+        col2.metric("Con Diferencias", total_diferencias)
+        col3.metric("Monto Total Dif", f"{monto_total_diferencia:,.2f}")
+        col4.metric("% Diferencias", f"{porcentaje_diferencia:.2f}%")
 
         st.warning("⚠️ Posibles coincidencias encontradas")
-        st.dataframe(df_match)
 
-        # EXPORTAR MATCHING
-        buffer2 = io.BytesIO()
-        df_match.to_excel(buffer2, index=False)
+        # =============================
+        # TABLA
+        # =============================
+        st.dataframe(
+            df_resultado.style.applymap(
+                lambda x: "background-color: red" if x != 0 else "",
+                subset=["Diferencia"]
+            ),
+            use_container_width=True
+        )
+
+        # =============================
+        # DESCARGA
+        # =============================
+        csv = df_resultado.to_csv(index=False).encode("utf-8")
 
         st.download_button(
-            label="📥 Descargar matching",
-            data=buffer2.getvalue(),
-            file_name="matching_inteligente.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            "📥 Descargar matching",
+            csv,
+            "matching_resultado.csv",
+            "text/csv"
         )
+
     else:
-        st.info("No se encontraron coincidencias")
+        st.error("No se encontraron coincidencias")
