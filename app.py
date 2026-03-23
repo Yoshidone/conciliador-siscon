@@ -188,4 +188,8 @@ df_match = df_year.copy()
 # nos quedamos con lo necesario
 df_match = df_match[[col_cliente, col_neto, col_fecha]].dropna()
 
-df_match["usado"]
+df_match = df_year.copy()
+
+df_match = df_match[[col_cliente, col_neto, col_fecha]].dropna()
+
+df_match["usado"] = False
