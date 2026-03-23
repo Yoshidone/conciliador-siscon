@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from itertools import combinations
 
 st.set_page_config(page_title="Conciliador Anual SISCONT", layout="wide")
 
@@ -117,9 +118,7 @@ if file:
             use_container_width=True
         )
 
-        # =============================
         # DASHBOARD AJUSTADO
-        # =============================
         st.markdown("## 📊 Dashboard Ajustado")
 
         total_dif_ajustada = resumen_ajustado["Diferencia_Ajustada"].sum()
@@ -131,9 +130,7 @@ if file:
         col1.metric("Total Diferencia Ajustada", f"{total_dif_ajustada:,.2f}")
         col2.metric("Clientes con diferencia ajustada", clientes_ajustados)
 
-        # =============================
-        # SEMÁFORO + EXPLICACIÓN
-        # =============================
+        # SEMÁFORO
         st.markdown("## 🧾 Análisis Inteligente (tipo auditor)")
 
         def clasificar(row):
@@ -164,6 +161,103 @@ if file:
         st.warning("No hay datos de diciembre del año anterior")
 
     # =============================
+    # 🔍 MATCHING INTELIGENTE
+    # =============================
+    st.markdown("## 🔍 Detección inteligente de compensaciones")
+
+    df_match = df_year[[col_cliente, col_neto, col_fecha]].dropna().copy()
+    df_match["usado"] = False
+
+    valores = df_match.reset_index()
+    matches = []
+
+    # 1 vs 1
+    for i, row1 in valores.iterrows():
+        if valores.loc[i, "usado"]:
+            continue
+
+        for j, row2 in valores.iterrows():
+            if i == j or valores.loc[j, "usado"]:
+                continue
+
+            if abs(row1[col_neto] + row2[col_neto]) < 1:
+
+                matches.append({
+                    "Tipo": "1 vs 1",
+                    "Clientes": f"{row1[col_cliente]} | {row2[col_cliente]}",
+                    "Montos": f"{row1[col_neto]} + {row2[col_neto]}",
+                    "Resultado": 0
+                })
+
+                valores.loc[i, "usado"] = True
+                valores.loc[j, "usado"] = True
+                break
+
+    # combinaciones
+    no_usados = valores[valores["usado"] == False]
+
+    for i, row_neg in no_usados.iterrows():
+
+        if valores.loc[i, "usado"]:
+            continue
+
+        if row_neg[col_neto] >= 0:
+            continue
+
+        positivos = valores[
+            (valores["usado"] == False) &
+            (valores[col_neto] > 0)
+        ]
+
+        lista_valores = list(positivos.index)
+
+        for r in range(2, 4):
+            for combo in combinations(lista_valores, r):
+
+                suma = sum(valores.loc[k, col_neto] for k in combo)
+
+                if abs(suma + row_neg[col_neto]) < 1:
+
+                    clientes = [valores.loc[k, col_cliente] for k in combo]
+
+                    matches.append({
+                        "Tipo": f"{r} vs 1",
+                        "Clientes": f"{clientes} | {row_neg[col_cliente]}",
+                        "Montos": f"{[valores.loc[k, col_neto] for k in combo]} + ({row_neg[col_neto]})",
+                        "Resultado": 0
+                    })
+
+                    for k in combo:
+                        valores.loc[k, "usado"] = True
+
+                    valores.loc[i, "usado"] = True
+                    break
+
+    df_matches = pd.DataFrame(matches)
+    st.dataframe(df_matches, use_container_width=True)
+
+    # =============================
+    # ❗ NO CUADRA
+    # =============================
+    st.markdown("## ❗ Movimientos que NO cuadran")
+
+    df_no_cuadra = valores[valores["usado"] == False]
+
+    if not df_no_cuadra.empty:
+
+        st.dataframe(
+            df_no_cuadra[[col_cliente, col_neto, col_fecha]],
+            use_container_width=True
+        )
+
+        monto_no_cuadra = df_no_cuadra[col_neto].sum()
+
+        st.warning(f"⚠️ Diferencia total sin cuadrar: {monto_no_cuadra:,.2f}")
+
+    else:
+        st.success("✅ Todo cuadra perfectamente")
+
+    # =============================
     # DESCARGA
     # =============================
     csv = resumen.to_csv(index=False).encode("utf-8")
@@ -175,66 +269,5 @@ if file:
         "text/csv"
     )
 
-    # =============================
-    # 🔍 MATCHING INTERNO (AGREGADO SIN CAMBIAR TU LÓGICA)
-    # =============================
-    st.markdown("## 🔍 Detección de montos que cuadran (aunque sean distintos clientes)")
-
-    df_match = df_year[[col_cliente, col_neto, col_fecha]].dropna()
-
-    # 🔥 FIX IMPORTANTE
-    df_match["usado"] = False
-
-    matches = []
-
-    for i, row1 in df_match.iterrows():
-        if df_match.loc[i, "usado"]:
-            continue
-
-        for j, row2 in df_match.iterrows():
-            if i == j or df_match.loc[j, "usado"]:
-                continue
-
-            if abs(row1[col_neto] + row2[col_neto]) < 1:
-
-                matches.append({
-                    "Cliente 1": row1[col_cliente],
-                    "Monto 1": row1[col_neto],
-                    "Cliente 2": row2[col_cliente],
-                    "Monto 2": row2[col_neto],
-                    "Fecha 1": row1[col_fecha],
-                    "Fecha 2": row2[col_fecha],
-                })
-
-                df_match.loc[i, "usado"] = True
-                df_match.loc[j, "usado"] = True
-                break
-
-    df_matches = pd.DataFrame(matches)
-
-    st.dataframe(df_matches, use_container_width=True)
-
 else:
     st.info("Sube un archivo para comenzar")
-    
-# =============================
-# ❗ LO QUE NO CUADRA
-# =============================
-st.markdown("## ❗ Movimientos que NO cuadran")
-
-# lo que no fue usado en matching
-df_no_cuadra = df_match[df_match["usado"] == False]
-
-if not df_no_cuadra.empty:
-
-    st.dataframe(
-        df_no_cuadra[[col_cliente, col_neto, col_fecha]],
-        use_container_width=True
-    )
-
-    monto_no_cuadra = df_no_cuadra[col_neto].sum()
-
-    st.warning(f"⚠️ Diferencia total sin cuadrar: {monto_no_cuadra:,.2f}")
-
-else:
-    st.success("✅ Todo cuadra perfectamente (no hay diferencias)")
