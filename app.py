@@ -176,7 +176,9 @@ if file:
     )
 
 else:
-    st.info("Sube un archivo para comenzar")# =============================
+    st.info("Sube un archivo para comenzar")
+    
+# =============================
 # MATCHING INTERNO POR MONTO
 # =============================
 st.markdown("## 🔍 Detección de montos que cuadran (aunque sean distintos clientes)")
